@@ -196,6 +196,7 @@ fun ThingsAppUi(
                     onSearch = { navController.navigate(Route.Search(it)) },
                     onNewList = { sheet = Sheet.NewList },
                     onSyncTap = { viewModel.refresh(sync = true, force = true) },
+                    refreshing = syncState.refreshing,
                 )
             }
             composable<Route.Inbox> {

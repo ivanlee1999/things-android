@@ -56,6 +56,7 @@ fun HomeScreen(
     onSearch: (String) -> Unit,
     onNewList: () -> Unit,
     onSyncTap: () -> Unit,
+    refreshing: Boolean,
 ) {
     val colors = ThingsTheme.colors
     var query by rememberSaveable { mutableStateOf("") }
@@ -64,6 +65,8 @@ fun HomeScreen(
     ListScaffold(
         onBack = null,
         listState = listState,
+        refreshing = refreshing,
+        onRefresh = onSyncTap,
         navTrailing = {
             Box(
                 Modifier.size(ThingsTheme.dims.iconButton).clickable { onNavigate(Route.Settings) },
