@@ -4,9 +4,7 @@ import android.app.Application
 import androidx.work.Configuration
 
 /**
- * The process. Holds the one [AppContainer] every screen and worker reads its dependencies from
- * — there is no DI framework here, because there are about a dozen singletons and a framework
- * would be more machinery than the thing it wires.
+ * The process. Owns the one [AppContainer] every screen and worker reads from.
  */
 class ThingsApp : Application(), Configuration.Provider {
 
@@ -16,12 +14,17 @@ class ThingsApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.start()
     }
 
-    // WorkManager's own initializer is removed in the manifest so the workers can be handed the
+    // WorkManager's own initializer is removed in the manifest so its workers can be handed the
     // container rather than reaching for a global.
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(container.workerFactory)
             .build()
 }
+
+/** The container, from anywhere with a context. */
+val android.content.Context.container: AppContainer
+    get() = (applicationContext as ThingsApp).container

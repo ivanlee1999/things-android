@@ -40,7 +40,7 @@ jobs:
 
       - name: Build release APK
         env:
-          STORE_FILE: ${{ steps.keystore.outputs.filePath }}
+          STORE_FILE: ${{ github.workspace }}/secrets/release.jks
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}

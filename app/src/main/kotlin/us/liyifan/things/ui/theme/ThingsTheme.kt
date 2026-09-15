@@ -16,7 +16,6 @@ import androidx.compose.ui.text.TextStyle
 import us.liyifan.things.data.settings.Appearance
 import us.liyifan.things.data.settings.EinkConfig
 import us.liyifan.things.data.settings.ThemeMode
-import us.liyifan.things.data.settings.einkColors as einkColorMode
 
 val LocalThingsColors = staticCompositionLocalOf { LightColors }
 val LocalThingsTypography = staticCompositionLocalOf { thingsTypography(eink = false) }
@@ -47,7 +46,7 @@ fun ThingsTheme(
     // E-ink ignores dark mode: driving a whole e-paper panel black is slow, ghosts badly, and
     // is nobody's idea of a readable page.
     val colors = when {
-        eink.enabled -> einkColorMode(eink.colorMode)
+        eink.enabled -> einkColors(eink.colorMode)
         dark -> DarkColors
         else -> LightColors
     }

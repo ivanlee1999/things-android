@@ -40,9 +40,10 @@ jobs:
 
       - name: Build preview APK
         env:
-          # An absolute path, not a relative one exported inside the run block: a relative
-          # STORE_FILE resolves against whichever directory Gradle happens to evaluate it in.
-          STORE_FILE: ${{ steps.keystore.outputs.filePath }}
+          # Spelled out from the workspace rather than taken from the decode step's output,
+          # which is relative: Gradle's file() resolves a relative path against the *module*
+          # directory, so app/secrets/release.jks is looked for and signing fails late.
+          STORE_FILE: ${{ github.workspace }}/secrets/release.jks
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
