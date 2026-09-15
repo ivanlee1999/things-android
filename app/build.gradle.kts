@@ -66,11 +66,6 @@ android {
         buildConfig = true
     }
 
-    sourceSets {
-        getByName("main") { kotlin.srcDir("src/main/kotlin") }
-        getByName("test") { kotlin.srcDir("src/test/kotlin") }
-    }
-
     testOptions {
         unitTests {
             isIncludeAndroidResources = true

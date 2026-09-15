@@ -38,7 +38,10 @@ fun parseDate(s: DateStr): LocalDate? = try {
     null
 }
 
-private fun date(s: DateStr): LocalDate = parseDate(s) ?: LocalDate.EPOCH
+// LocalDate.EPOCH is API 34; the rest of java.time is API 26, and minSdk here is 29.
+private val EPOCH: LocalDate = LocalDate.of(1970, 1, 1)
+
+private fun date(s: DateStr): LocalDate = parseDate(s) ?: EPOCH
 
 fun localToday(zone: ZoneId = ZoneId.systemDefault()): DateStr = LocalDate.now(zone).toDateStr()
 
