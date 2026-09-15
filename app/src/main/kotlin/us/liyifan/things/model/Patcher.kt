@@ -77,10 +77,17 @@ data class EditFields(
 
     fun rewriteIds(map: Map<String, String>): EditFields = copy(
         uuid = map[uuid] ?: uuid,
-        project = project?.let { map[it] ?: it },
-        heading = heading?.let { map[it] ?: it },
-        area = area?.let { map[it] ?: it },
+        project = project.rewrite(map),
+        heading = heading.rewrite(map),
+        area = area.rewrite(map),
     )
+
+    /**
+     * "none" is how this wire clears a field, not an id, so it is never substituted — otherwise
+     * clearing a project would instead move the to-do into whatever "none" mapped to.
+     */
+    private fun String?.rewrite(map: Map<String, String>): String? =
+        if (this == null || this == NONE) this else map[this] ?: this
 
     companion object {
         const val NONE = "none"
