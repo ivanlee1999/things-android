@@ -96,14 +96,14 @@ fun NewListSheet(onPick: (NewList) -> Unit, onDismiss: () -> Unit) {
     ThingsSheet(onDismiss = onDismiss) {
         NewListOption(
             title = "New Project",
-            description = "A to-do with a plan of its own.",
+            description = "Define a goal, then work towards it one to-do at a time.",
             onClick = { onDismiss(); onPick(NewList.PROJECT) },
         ) {
             ProjectPie(progress = 0.3f, size = 30.dp)
         }
         NewListOption(
             title = "New Area",
-            description = "A part of life or work that holds projects.",
+            description = "Group your projects and to-dos by responsibility, such as Family or Work.",
             onClick = { onDismiss(); onPick(NewList.AREA) },
         ) {
             Icon(listIcon(ThingsIcon.Area, 30f), contentDescription = null, tint = colors.area, modifier = Modifier.size(30.dp))
