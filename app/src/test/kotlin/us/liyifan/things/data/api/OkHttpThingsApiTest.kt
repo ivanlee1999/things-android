@@ -91,7 +91,7 @@ class OkHttpThingsApiTest {
 
         val request = server.takeRequest()
         assertEquals("/api/tasks/create", request.url.encodedPath)
-        val body = request.body.utf8()
+        val body = request.body?.utf8().orEmpty()
         assertTrue(body.contains(""""title":"Buy milk""""))
         // The backend's field is `when`, whatever Kotlin calls it.
         assertTrue(body.contains(""""when":"today""""))
@@ -101,7 +101,7 @@ class OkHttpThingsApiTest {
         enqueue("""{"status":"updated","uuid":"u1"}""")
         api.editTask(EditFields(uuid = "u1", title = "New title", deadline = "none"))
 
-        val body = server.takeRequest().body.utf8()
+        val body = server.takeRequest().body?.utf8().orEmpty()
         assertTrue(body.contains(""""uuid":"u1""""))
         assertTrue(body.contains(""""title":"New title""""))
         assertTrue(body.contains(""""deadline":"none""""))

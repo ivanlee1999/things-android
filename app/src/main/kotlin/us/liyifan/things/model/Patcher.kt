@@ -1,5 +1,6 @@
 package us.liyifan.things.model
 
+import kotlinx.serialization.Serializable
 import java.time.Instant
 
 /**
@@ -54,6 +55,7 @@ fun applyTaskPatch(item: Item, patch: TaskPatch, today: DateStr): Item {
 }
 
 /** The fields of POST /api/tasks/edit. Absent means unchanged; "none" clears. */
+@Serializable
 data class EditFields(
     val uuid: String,
     val title: String? = null,

@@ -20,6 +20,7 @@ robolectric = "4.17"
 room = "2.8.5"
 serializationJson = "1.11.0"
 sqliteBundled = "2.7.1"
+testCore = "1.7.0"
 turbine = "1.2.1"
 work = "2.11.2"
 
@@ -38,6 +39,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqliteBundled" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+androidx-test-core = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
 
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }

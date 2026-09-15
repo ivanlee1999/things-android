@@ -119,6 +119,7 @@ dependencies {
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.androidx.sqlite.bundled)
     testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.test.core)
 }
 
 // `./gradlew -q printVersionName` — the release workflow names the APK with it. The value is
