@@ -134,7 +134,7 @@ class HubThingsRepositoryTest {
         val create = api.only<FakeThingsApi.Call.CreateTask>().single()
         assertEquals("p1", create.request.project)
         // The create endpoint takes no heading, so the heading arrives as an edit.
-        assertEquals("h1", api.only<FakeThingsApi.Call.EditTask>().single().heading)
+        assertEquals("h1", api.only<FakeThingsApi.Call.EditTask>().single().fields.heading)
         assertNotNull(model().tasksById[create.minted])
         assertNull(model().tasksById[tempId])
     }
