@@ -143,13 +143,16 @@ fun ThingsAppUi(
             onOpenSheet = { sheet = it },
         )
 
+        // Read once here: a NavHost transition lambda is not a composable scope, and in e-ink
+        // mode these all return None anyway.
+        val motion = ThingsTheme.motion
         NavHost(
             navController = navController,
             startDestination = if (connection.configured) Route.Home else Route.Connect,
-            enterTransition = { ThingsTheme.motion.enter() },
-            exitTransition = { ThingsTheme.motion.exit() },
-            popEnterTransition = { ThingsTheme.motion.popEnter() },
-            popExitTransition = { ThingsTheme.motion.popExit() },
+            enterTransition = { motion.enter() },
+            exitTransition = { motion.exit() },
+            popEnterTransition = { motion.popEnter() },
+            popExitTransition = { motion.popExit() },
         ) {
             composable<Route.Connect> {
                 us.liyifan.things.ui.screens.ConnectScreen(

@@ -94,31 +94,55 @@ fun HomeScreen(
         item { GroupHeader(title = "", underline = true) }
 
         item {
-            HomeRow("Today", { Icon(listIcon(ThingsIcon.Today, 22f), null, tint = colors.today, modifier = Modifier.size(22.dp)) },
-                model.view(ViewId.TODAY).size) { onNavigate(Route.Today) }
+            HomeRow(
+                title = "Today",
+                icon = { Icon(listIcon(ThingsIcon.Today, 22f), null, tint = colors.today, modifier = Modifier.size(22.dp)) },
+                count = model.view(ViewId.TODAY).size,
+                onClick = { onNavigate(Route.Today) },
+            )
         }
         item {
-            HomeRow("Upcoming", { Icon(listIcon(ThingsIcon.Upcoming, 22f), null, tint = colors.upcoming, modifier = Modifier.size(22.dp)) },
-                null) { onNavigate(Route.Upcoming) }
+            HomeRow(
+                title = "Upcoming",
+                icon = { Icon(listIcon(ThingsIcon.Upcoming, 22f), null, tint = colors.upcoming, modifier = Modifier.size(22.dp)) },
+                count = null,
+                onClick = { onNavigate(Route.Upcoming) },
+            )
         }
         item {
-            HomeRow("Anytime", { Icon(listIcon(ThingsIcon.Anytime, 22f), null, tint = colors.anytime, modifier = Modifier.size(22.dp)) },
-                null) { onNavigate(Route.Anytime) }
+            HomeRow(
+                title = "Anytime",
+                icon = { Icon(listIcon(ThingsIcon.Anytime, 22f), null, tint = colors.anytime, modifier = Modifier.size(22.dp)) },
+                count = null,
+                onClick = { onNavigate(Route.Anytime) },
+            )
         }
         item {
-            HomeRow("Someday", { Icon(listIcon(ThingsIcon.Someday, 22f), null, tint = colors.someday, modifier = Modifier.size(22.dp)) },
-                null) { onNavigate(Route.Someday) }
+            HomeRow(
+                title = "Someday",
+                icon = { Icon(listIcon(ThingsIcon.Someday, 22f), null, tint = colors.someday, modifier = Modifier.size(22.dp)) },
+                count = null,
+                onClick = { onNavigate(Route.Someday) },
+            )
         }
 
         item { GroupHeader(title = "", underline = true) }
 
         item {
-            HomeRow("Logbook", { Icon(listIcon(ThingsIcon.Logbook, 22f), null, tint = colors.logbook, modifier = Modifier.size(22.dp)) },
-                null) { onNavigate(Route.Logbook) }
+            HomeRow(
+                title = "Logbook",
+                icon = { Icon(listIcon(ThingsIcon.Logbook, 22f), null, tint = colors.logbook, modifier = Modifier.size(22.dp)) },
+                count = null,
+                onClick = { onNavigate(Route.Logbook) },
+            )
         }
         item {
-            HomeRow("Trash", { Icon(listIcon(ThingsIcon.Trash, 22f), null, tint = colors.trash, modifier = Modifier.size(22.dp)) },
-                null) { onNavigate(Route.Trash) }
+            HomeRow(
+                title = "Trash",
+                icon = { Icon(listIcon(ThingsIcon.Trash, 22f), null, tint = colors.trash, modifier = Modifier.size(22.dp)) },
+                count = null,
+                onClick = { onNavigate(Route.Trash) },
+            )
         }
 
         if (model.looseProjects.isNotEmpty()) {
@@ -171,14 +195,6 @@ private fun LazyListScope.projectRows(
         )
     }
 }
-
-@Composable
-private fun HomeRow(
-    title: String,
-    icon: @Composable () -> Unit,
-    count: Int?,
-    onClick: () -> Unit,
-) = HomeRow(title, icon, count, false, false, onClick)
 
 @Composable
 private fun HomeRow(

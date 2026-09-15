@@ -221,10 +221,7 @@ private fun FooterButton(
     labelColor: Color = ThingsTheme.colors.text,
 ) {
     Row(
-        modifier
-            .padding(horizontal = 2.dp)
-            .size(width = if (label == null) ThingsTheme.dims.iconButton else androidx.compose.ui.unit.Dp.Unspecified, height = ThingsTheme.dims.iconButton)
-            .then(Modifier),
+        modifier.padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
