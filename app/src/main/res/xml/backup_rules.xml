@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Room database is a cache of the server's snapshot and is refetched on first launch, and the
+  secrets in DataStore are encrypted with an AndroidKeyStore key that does not leave the device —
+  restoring that ciphertext onto another phone would yield an unreadable blob that looks like a
+  configured app. Both are excluded so a restored install simply asks to connect again.
+-->
+<full-backup-content>
+    <exclude domain="database" />
+    <exclude domain="file" path="datastore/" />
+</full-backup-content>

@@ -1,0 +1,68 @@
+name: Preview build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode keystore
+        id: keystore
+        uses: timheuer/base64-to-file@v1.2.4
+        with:
+          fileDir: ./secrets
+          fileName: release.jks
+          encodedString: ${{ secrets.KEYSTORE_FILE }}
+
+      - name: Build preview APK
+        env:
+          # An absolute path, not a relative one exported inside the run block: a relative
+          # STORE_FILE resolves against whichever directory Gradle happens to evaluate it in.
+          STORE_FILE: ${{ steps.keystore.outputs.filePath }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew -PIS_NEXT=true testDebugUnitTest assembleDebug --stacktrace
+
+      - run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/things-next.apk
+      - run: echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/debug/things-next.apk
+          tag_name: next
+          name: next
+          prerelease: true
+          # Pin the moving "next" tag to the commit actually built, or the API points it at the
+          # default branch's tip instead and the tag quietly describes the wrong code.
+          target_commitish: ${{ github.sha }}
+          body: |
+            ### Preview build
+            - **Branch:** `${{ github.ref_name }}`
+            - **Commit:** `${{ github.sha }}`
+            - **Built:** ${{ env.BUILD_DATE }}
+          token: ${{ github.token }}

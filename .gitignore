@@ -1,0 +1,18 @@
+*.iml
+.gradle/
+/build
+/app/build
+/captures
+local.properties
+.idea/
+.kotlin/
+.DS_Store
+.claude/
+CLAUDE.md
+
+# Signing material. Release and preview builds read the keystore from $STORE_FILE, which CI
+# decodes from a repository secret; a committed key could never be un-published.
+*.jks
+*.keystore
+*.p12
+/secrets/

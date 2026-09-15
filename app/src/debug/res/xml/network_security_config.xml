@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug and preview builds only. Cleartext is permitted so a LAN base URL such as
+  http://192.168.0.100:8097 works on the nightly APK; UrlPolicy still rejects a cleartext host
+  that is not loopback, RFC 1918, link-local or .local, so a plaintext key cannot be sent to a
+  server on the open internet by a typo.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
