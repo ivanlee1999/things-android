@@ -1,9 +1,12 @@
 package us.liyifan.things.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import us.liyifan.things.model.Model
 import us.liyifan.things.model.ViewId
-import us.liyifan.things.ui.components.GroupHeader
 import us.liyifan.things.ui.components.ListScaffold
 import us.liyifan.things.ui.components.PageHeader
 import us.liyifan.things.ui.components.SearchField
@@ -91,7 +93,7 @@ fun HomeScreen(
             )
         }
 
-        item { GroupHeader(title = "", underline = true) }
+        item { HomeGroupGap() }
 
         item {
             HomeRow(
@@ -126,7 +128,7 @@ fun HomeScreen(
             )
         }
 
-        item { GroupHeader(title = "", underline = true) }
+        item { HomeGroupGap() }
 
         item {
             HomeRow(
@@ -146,7 +148,7 @@ fun HomeScreen(
         }
 
         if (model.looseProjects.isNotEmpty()) {
-            item { GroupHeader(title = "", underline = true) }
+            item { HomeGroupGap() }
             projectRows(model, model.looseProjects, onNavigate)
         }
 
@@ -176,6 +178,18 @@ fun HomeScreen(
 
         item { SyncStatusLine(label = syncLabel, stagedAvailable = stagedAvailable, onClick = onSyncTap) }
     }
+}
+
+/** The gap between blocks of rows, which is how the phone layout separates them. */
+@Composable
+private fun HomeGroupGap() {
+    Spacer(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp)
+            .height(ThingsTheme.dims.hairline)
+            .background(ThingsTheme.colors.line),
+    )
 }
 
 private fun LazyListScope.projectRows(

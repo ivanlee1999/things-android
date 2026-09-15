@@ -57,7 +57,7 @@ fun FlatListScreen(
 ) {
     val all = model.view(view)
     val items = filterByTag(all, host.tagFilter)
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = title, icon = { ListIcon(icon, iconTint) }) }
         item { TagBar(model.tagsIn(all), host.tagFilter, host.onTagFilter) }
         taskRows(items, model, host, RowContext(showCrumb = showCrumb, showWhen = showWhen))
@@ -78,7 +78,7 @@ fun UpcomingScreen(model: Model, host: ListHost) {
     val items = filterByTag(all, host.tagFilter)
     val groups = model.upcomingGroups(items)
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = "Upcoming", icon = { ListIcon(ThingsIcon.Upcoming, colors.upcoming) }) }
         item { TagBar(model.tagsIn(all), host.tagFilter, host.onTagFilter) }
 
@@ -141,7 +141,7 @@ fun GroupedListScreen(
     val items = filterByTag(all, host.tagFilter)
     val groups = model.groupByProject(items)
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = title, icon = { ListIcon(icon, iconTint) }) }
         item { TagBar(model.tagsIn(all), host.tagFilter, host.onTagFilter) }
 
@@ -192,6 +192,8 @@ interface ListHost {
     val onBack: (() -> Unit)?
     val tagFilter: String?
     val onTagFilter: (String?) -> Unit
+    val refreshing: Boolean
+    val onRefresh: () -> Unit
 
     @Composable
     fun row(task: Item, ctx: RowContext)

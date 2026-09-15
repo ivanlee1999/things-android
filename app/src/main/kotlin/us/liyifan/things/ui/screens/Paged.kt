@@ -46,7 +46,7 @@ fun LogbookScreen(
 
     LaunchedEffect(Unit) { onLoad(false) }
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = "Logbook", icon = { ListIcon(ThingsIcon.Logbook, colors.logbook, 26) }) }
 
         groups.forEach { group ->
@@ -97,7 +97,7 @@ fun TrashScreen(
     val colors = ThingsTheme.colors
     LaunchedEffect(Unit) { onLoad() }
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = "Trash", icon = { ListIcon(ThingsIcon.Trash, colors.trash, 26) }) }
         items(items.size, key = { i -> "t-${items[i].id}" }) { index ->
             TrashRow(items[index], onPutBack = { onPutBack(items[index].id) })

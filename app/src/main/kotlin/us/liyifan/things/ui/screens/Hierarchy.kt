@@ -78,7 +78,7 @@ fun ProjectScreen(
     val sections = model.projectSections(project.id, tasks)
     val progress = model.projectProgress(project.id, logged?.size)
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item {
             PageHeader(
                 title = project.title,
@@ -223,7 +223,7 @@ fun AreaScreen(
     val projects = model.projectsByArea[area.id].orEmpty()
     val tasks = filterByTag(model.tasksByArea[area.id].orEmpty(), host.tagFilter)
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item {
             PageHeader(
                 title = area.title,
@@ -288,7 +288,7 @@ fun SearchScreen(
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     val results = remember(query, model) { model.search(query) }
 
-    ListScaffold(onBack = host.onBack, listState = host.listState) {
+    ListScaffold(onBack = host.onBack, listState = host.listState, refreshing = host.refreshing, onRefresh = host.onRefresh) {
         item { PageHeader(title = "Quick Find") }
         item { SearchField(value = query, onValueChange = { query = it }, autoFocus = true) }
 

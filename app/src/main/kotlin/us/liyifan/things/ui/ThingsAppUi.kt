@@ -47,6 +47,8 @@ import us.liyifan.things.ui.components.ThingsSheet
 import us.liyifan.things.ui.components.ThingsToast
 import us.liyifan.things.ui.components.taskMenu
 import us.liyifan.things.ui.eink.EpdRefresher
+import us.liyifan.things.ui.keys.ShortcutActions
+import us.liyifan.things.ui.keys.thingsShortcuts
 import us.liyifan.things.ui.icons.ThingsIcon
 import us.liyifan.things.ui.nav.Route
 import us.liyifan.things.ui.pickers.DeadlinePicker
@@ -115,9 +117,27 @@ fun ThingsAppUi(
 
     LaunchedEffect(ui.expandedId) { UiActivity.setEditorOpen(ui.expandedId != null) }
 
+    val shortcuts = ShortcutActions(
+        onNew = { viewModel.createTask(NewTaskInit()) },
+        onComplete = { ui.selectedId?.let { viewModel.completeTask(it, true) } },
+        onTrash = { ui.selectedId?.let { viewModel.trashTask(it) } },
+        onMove = { to -> ui.selectedId?.let { viewModel.moveTask(it, to) } },
+        onClose = { if (ui.expandedId != null) viewModel.expand(null) else viewModel.select(null) },
+        onGoTo = { n ->
+            listOf(
+                Route.Inbox, Route.Today, Route.Upcoming, Route.Anytime,
+                Route.Someday, Route.Logbook, Route.Trash,
+            ).getOrNull(n - 1)?.let { navController.navigate(it) }
+        },
+        onFind = { navController.navigate(Route.Search()) },
+        isEditing = { ui.expandedId != null },
+        hasSelection = { ui.selectedId != null },
+    )
+
     Box(
         Modifier
             .fillMaxSize()
+            .thingsShortcuts(shortcuts)
             // Any touch counts as "the reader is here", which is what releases a snapshot that
             // was held back rather than drawn under them.
             .pointerInput(Unit) {
@@ -140,6 +160,7 @@ fun ThingsAppUi(
             model = m,
             ui = ui,
             navController = navController,
+            isRefreshing = syncState.refreshing,
             onOpenSheet = { sheet = it },
         )
 
@@ -406,15 +427,18 @@ private fun rememberListHost(
     model: Model,
     ui: us.liyifan.things.vm.UiState,
     navController: NavHostController,
+    isRefreshing: Boolean,
     onOpenSheet: (Sheet) -> Unit,
 ): ListHost {
     val listState = rememberLazyListState()
-    return remember(model, ui, listState) {
+    return remember(model, ui, listState, isRefreshing) {
         object : ListHost {
             override val listState: LazyListState = listState
             override val onBack: (() -> Unit)? = { navController.popBackStack() }
             override val tagFilter: String? = ui.tagFilter
             override val onTagFilter: (String?) -> Unit = { viewModel.setTagFilter(it) }
+            override val refreshing: Boolean = isRefreshing
+            override val onRefresh: () -> Unit = { viewModel.refresh(sync = true, force = true) }
 
             @Composable
             override fun row(task: Item, ctx: RowContext) {

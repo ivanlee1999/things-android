@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -69,3 +71,52 @@ fun Modifier.pageKeys(listState: LazyListState): Modifier = composed {
 private suspend fun LazyListState.jumpBy(delta: Float) {
     scroll { scrollBy(delta) }
 }
+
+/**
+ * The web client's keyboard shortcuts, for anyone who pairs a keyboard.
+ *
+ * Only the ones that mean something on a phone: there is no sidebar to focus and no mouse to
+ * right-click with. A bare letter is ignored while a text field has focus, or typing a note
+ * would keep completing the to-do it is attached to.
+ */
+data class ShortcutActions(
+    val onNew: () -> Unit,
+    val onComplete: () -> Unit,
+    val onTrash: () -> Unit,
+    val onMove: (String) -> Unit,
+    val onClose: () -> Unit,
+    val onGoTo: (Int) -> Unit,
+    val onFind: () -> Unit,
+    val isEditing: () -> Boolean,
+    val hasSelection: () -> Boolean,
+)
+
+fun Modifier.thingsShortcuts(actions: ShortcutActions): Modifier = composed {
+    onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        val modified = event.isCtrlPressed || event.isMetaPressed
+        val editing = actions.isEditing()
+
+        when {
+            // Escape closes whatever is open, whether or not a field has focus.
+            event.key == Key.Escape -> { actions.onClose(); true }
+
+            modified && event.key == Key.K -> { actions.onComplete(); true }
+            modified && event.key == Key.F -> { actions.onFind(); true }
+            modified && event.key == Key.Backspace -> { actions.onTrash(); true }
+            modified && event.key == Key.T -> { actions.onMove("today"); true }
+            modified && event.key == Key.R -> { actions.onMove("anytime"); true }
+            modified && event.key == Key.S -> { actions.onMove("someday"); true }
+            modified && event.key == Key.I -> { actions.onMove("inbox"); true }
+            modified && event.key == Key.N -> { actions.onNew(); true }
+            modified && event.key in DIGITS -> { actions.onGoTo(DIGITS.indexOf(event.key) + 1); true }
+
+            // Bare letters only when nothing is being typed into.
+            !editing && event.key == Key.N -> { actions.onNew(); true }
+
+            else -> false
+        }
+    }
+}
+
+private val DIGITS = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven)

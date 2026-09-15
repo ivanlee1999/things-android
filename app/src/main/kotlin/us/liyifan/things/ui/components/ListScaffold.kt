@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,12 +56,15 @@ import us.liyifan.things.ui.theme.ThingsTheme
  * The bar is solid rather than the web client's translucent blur. Blur is an expensive alpha
  * effect that an e-ink panel renders as mud, and on a colour panel it is invisible anyway.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ListScaffold(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     navTrailing: @Composable (() -> Unit)? = null,
+    refreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val colors = ThingsTheme.colors
@@ -92,16 +98,42 @@ fun ListScaffold(
             navTrailing?.invoke()
         }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-                .pageKeys(listState)
-                .padding(horizontal = dims.pageHorizontal),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp),
-            content = content,
-        )
+        // Pulling to refresh matters most in e-ink mode, where the minute-by-minute poll is
+        // off and this is how you ask for the server's latest.
+        val pullState = rememberPullToRefreshState()
+        Box(Modifier.fillMaxSize()) {
+            val list: @Composable () -> Unit = {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding()
+                        .pageKeys(listState)
+                        .padding(horizontal = dims.pageHorizontal),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp),
+                    content = content,
+                )
+            }
+            if (onRefresh == null) {
+                list()
+            } else {
+                PullToRefreshBox(
+                    isRefreshing = refreshing,
+                    onRefresh = onRefresh,
+                    state = pullState,
+                    indicator = {
+                        Indicator(
+                            state = pullState,
+                            isRefreshing = refreshing,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            containerColor = colors.bgCard,
+                            color = colors.blue,
+                        )
+                    },
+                    content = { list() },
+                )
+            }
+        }
     }
 }
 
