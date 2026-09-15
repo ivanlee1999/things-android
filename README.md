@@ -48,6 +48,19 @@ at all**, by design, so that a local Claude connector can use it. Block that pat
 or put Access in front of the hostname. The two Cloudflare fields in Settings are for the latter
 and are otherwise left blank.
 
+## About the size
+
+The preview APK is around 39 MB, nearly all of it compiled code. That is what an unminified
+Compose app weighs: the UI toolkit, Material 3, Room, WorkManager, Glance and two copies of
+protobuf, with every class of every dependency kept because nothing is shrinking them.
+
+R8 would cut it to roughly a quarter, and both builds should eventually turn it on — what gets
+tested ought to be what ships. It is deliberately off until the app is known to run on the
+device, because the first minified build is exactly the wrong thing to be debugging remotely on
+an e-ink phone. Flip `isMinifyEnabled` in `app/build.gradle.kts` once it has proved itself.
+
+Practically it costs one 30-second download over wifi, and nothing after that.
+
 ## Shape
 
 ```
