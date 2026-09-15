@@ -31,6 +31,10 @@ Both are signed with the same key, so one updates over the other without an unin
 
 ## Connecting it
 
+See [docs/connecting-the-phone.md](docs/connecting-the-phone.md) for the tunnel and the Access
+policy in front of it.
+
+
 Settings → Connection wants the address of your `things-cloud` server and its `API_KEY`. The
 key speaks for a whole Things account, so a release build will only send it over HTTPS; the
 intended path is a Cloudflare Tunnel with an Access policy in front, and the two Cloudflare
