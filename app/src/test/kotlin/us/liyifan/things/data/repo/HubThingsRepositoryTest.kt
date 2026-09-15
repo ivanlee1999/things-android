@@ -309,6 +309,24 @@ class HubThingsRepositoryTest {
         assertEquals(listOf("t2"), model().snapshot.tasks.map { it.id })
     }
 
+    @Test fun `a write made while a read is in flight is not undone by the answer`() = runTest {
+        seed(tasks = listOf(TaskDto(id = "t1", title = "Alpha")), views = ViewsDto(today = listOf("t1")))
+
+        // The server is about to answer a read that still believes t1 is open. The completion
+        // happens between the request and the answer, which is the race this guards.
+        api.snapshotToReturn = SnapshotDto(
+            today = TODAY,
+            tasks = listOf(TaskDto(id = "t1", title = "Alpha")),
+            views = ViewsDto(today = listOf("t1")),
+        )
+        repo.completeTask("t1", done = true)
+
+        val result = repo.refresh(sync = true)
+
+        assertEquals(RefreshResult.SkippedPendingWrites, result)
+        assertNull("a completed to-do must not come back", model().tasksById["t1"])
+    }
+
     private companion object {
         const val TODAY = "2026-09-15"
     }

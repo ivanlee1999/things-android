@@ -103,7 +103,17 @@ class HubThingsRepository(
                 _syncState.update { it.copy(refreshing = false, stagedAvailable = true, lastError = null) }
                 RefreshResult.Staged
             } else {
-                applyDto(dto)
+                // Under the write lock, and checked again: the fetch took a round trip, and a
+                // to-do completed while it was in flight would otherwise be resurrected by an
+                // answer that predates it.
+                writeLock.withLock {
+                    if (!force && processor.pending() > 0) {
+                        _syncState.update { it.copy(refreshing = false) }
+                        kickOutbox()
+                        return RefreshResult.SkippedPendingWrites
+                    }
+                    applyDto(dto)
+                }
                 RefreshResult.Applied
             }
         } catch (e: ApiException) {
@@ -114,7 +124,7 @@ class HubThingsRepository(
 
     override suspend fun applyStagedIfAny() {
         val dto = staged.take() ?: return
-        applyDto(dto)
+        writeLock.withLock { applyDto(dto) }
     }
 
     private suspend fun applyDto(dto: SnapshotDto) {
