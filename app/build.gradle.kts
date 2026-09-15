@@ -98,8 +98,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.runtime)
     implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation(libs.compose.ui.tooling)
+    // No Compose tooling. @Preview is unused — nothing is built on this machine, only in CI —
+    // and the tooling artifacts are the bulk of a debug APK, which is one that gets installed on
+    // a phone here rather than run in an emulator.
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
