@@ -14,12 +14,26 @@ serves a REST API over the mirror it keeps. It has no accounts of its own, no lo
 no sessions — `/api/verify` checks *the server's* credentials, not anything a caller sends. So
 "log in as me" has nothing to talk to.
 
+### Two different credentials, easily confused
+
+| | Where it lives | What it opens |
+|---|---|---|
+| `THINGS_USERNAME` / `THINGS_PASSWORD` | the server's `.env.things` only | your actual Things Cloud account |
+| `API_KEY` | the same file, and every client | the local server's `/api/*`, nothing else |
+
+`API_KEY` is a shared secret somebody generated for this house. Cultured Code have nothing to do
+with it: they publish no API and issue no keys, which is why the server signs in with an email
+and password like an app would. So "the API key" is never a Things Cloud credential, and there is
+no such thing to obtain.
+
 That separation is worth keeping rather than working around:
 
-- The API key can be rotated after a lost phone by editing `.env.things` and restarting the
-  container. A Things password could not be, without changing it everywhere it is used.
 - The key cannot be used to sign in to Things Cloud, or to anything else you own.
 - The phone never holds the account credentials at all.
+- The key can be rotated without changing your Things password. Note that it is **one shared key
+  for every client**, so rotating it means editing `.env.things`, restarting `things-cloud` and
+  `things-web`, and updating `~/workspace/reterminal/.env`, which the e-ink dashboard reads. A
+  lost phone therefore costs a five-minute round of updates, not a single restart.
 
 (The app could instead speak the Things Cloud protocol directly, the way the Mac and iPhone apps
 do, and then it really would want the account password. That means porting a reverse-engineered
