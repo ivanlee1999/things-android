@@ -1,8 +1,8 @@
 package us.liyifan.things.widget
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
@@ -32,7 +32,6 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import kotlinx.coroutines.flow.first
 import us.liyifan.things.ThingsApp
 import us.liyifan.things.model.Item
@@ -65,7 +64,7 @@ class TodayWidget : GlanceAppWidget() {
                             "Today",
                             style = TextStyle(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                fontSize = 16.sp,
                                 color = GlanceTheme.colors.onBackground,
                             ),
                         )
