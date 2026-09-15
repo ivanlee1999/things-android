@@ -159,9 +159,14 @@ fun SettingsScreen(
 /**
  * The connection form.
  *
- * Both Cloudflare fields are asked for because the backend's own /mcp endpoint has no
- * authentication at all: an Access service token in front of the tunnel is what keeps the
- * hostname from being an open door to the account.
+ * The server address and the API key are all this needs. The two Cloudflare fields are for one
+ * specific arrangement — an Access policy in front of the tunnel — and are sent only when they
+ * are filled in.
+ *
+ * There is deliberately no place to type a Things account password. The backend holds the
+ * account and speaks for it; it has no login of its own and issues no session. The API key is
+ * the key to that server, and being separate is the point: it can be rotated after a lost phone
+ * without touching the Things account, and it cannot be used to sign in to Things Cloud.
  */
 @Composable
 fun ConnectionForm(
@@ -184,20 +189,26 @@ fun ConnectionForm(
         LabelledField(
             label = "API key",
             value = config.apiKey,
-            placeholder = "the backend's API_KEY",
+            placeholder = "API_KEY from the server's .env",
             onValueChange = { onChange(config.copy(apiKey = it)) },
             secret = true,
         )
+        Text(
+            "Only if Cloudflare Access sits in front of the server. Leave both blank otherwise.",
+            style = ThingsTheme.type.sub,
+            color = colors.text2,
+            modifier = Modifier.padding(top = 6.dp),
+        )
         LabelledField(
-            label = "Cloudflare Access client ID",
+            label = "Access client ID",
             value = config.cfAccessClientId,
-            placeholder = "optional",
+            placeholder = "leave blank if unused",
             onValueChange = { onChange(config.copy(cfAccessClientId = it)) },
         )
         LabelledField(
-            label = "Cloudflare Access client secret",
+            label = "Access client secret",
             value = config.cfAccessClientSecret,
-            placeholder = "optional",
+            placeholder = "leave blank if unused",
             onValueChange = { onChange(config.copy(cfAccessClientSecret = it)) },
             secret = true,
         )

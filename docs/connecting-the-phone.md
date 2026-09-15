@@ -4,24 +4,48 @@ The app talks to the `things-cloud` service that already runs on the house serve
 changes that service; the work is making it reachable from a phone that is not on the LAN, and
 keeping it shut to everyone else.
 
-## What is there today
+## What the app asks for, and why it is not your Things password
 
-```
-things-cloud   127.0.0.1:8097 -> 8080   loopback only, guarded by one shared API_KEY
-things-web     0.0.0.0:8098   -> 80     nginx, on the LAN, injects the key, no login of its own
-```
+Two fields: **the server address** and **the API key**. That is the whole login.
 
-Two things follow from that. The service speaks for a whole Things Cloud account through a
-single bearer key, and its `/mcp` endpoint has **no authentication at all**. So the one thing
-never to do is publish `:8098`, or route a tunnel at it: that is an unauthenticated door to the
-account, and it would be open to the internet rather than to the living room.
+There is no box for a Things account password, and adding one would not do anything. The backend
+signs in to Things Cloud itself, with the credentials in `~/docker/things-cloud/.env.things`, and
+serves a REST API over the mirror it keeps. It has no accounts of its own, no login endpoint and
+no sessions — `/api/verify` checks *the server's* credentials, not anything a caller sends. So
+"log in as me" has nothing to talk to.
 
-## The tunnel
+That separation is worth keeping rather than working around:
 
-`cloudflared` already runs on this host, on its own compose network. It needs to reach
-`things-cloud`, which is on another.
+- The API key can be rotated after a lost phone by editing `.env.things` and restarting the
+  container. A Things password could not be, without changing it everywhere it is used.
+- The key cannot be used to sign in to Things Cloud, or to anything else you own.
+- The phone never holds the account credentials at all.
 
-1. Add the backend's network to the tunnel's compose service:
+(The app could instead speak the Things Cloud protocol directly, the way the Mac and iPhone apps
+do, and then it really would want the account password. That means porting a reverse-engineered
+protocol and its sync engine into Kotlin and maintaining it alongside the Go one — a second
+project, not a setting.)
+
+## What actually needs guarding
+
+The service exposes two things, and only one of them is behind the key:
+
+| | |
+|---|---|
+| `/api/*` | guarded by `API_KEY` as a bearer token |
+| `/mcp` | **no authentication at all** — the Model Context Protocol endpoint, deliberately open so a local Claude connector can use it |
+
+So the only real hazard in publishing this hostname is `/mcp`. Anyone who found the address would
+have full read and write on the account with no credential whatsoever. Everything below is about
+closing that one door.
+
+The same reasoning rules out pointing a tunnel at the `things-web` container on port 8098: that
+nginx *injects* the API key on the way through and has no login of its own, so publishing it
+would be publishing the account.
+
+## The simple setup: block /mcp, then URL and key are enough
+
+1. Add the backend's network to the tunnel's compose service, so `cloudflared` can reach it:
 
    ```yaml
    # ~/docker/cloudflare-tunnel/docker-compose.yaml
@@ -36,33 +60,41 @@ account, and it would be open to the internet rather than to the living room.
 
    Then `cd ~/docker/cloudflare-tunnel && docker compose up -d`.
 
-2. In the Cloudflare dashboard, on this tunnel, add a public hostname:
+2. In the Cloudflare dashboard, add a public hostname on this tunnel:
 
    | | |
    |---|---|
    | Subdomain | `things` (or whatever you like) |
    | Service | `http://things-cloud:8080` |
 
-   **Not** `http://things-web:80` and not port 8098. The API, not the web client.
+3. Add one WAF custom rule on the zone (free plan includes five), so the open endpoint is never
+   reachable from outside:
 
-3. Put a **Cloudflare Access** policy on that hostname, and create a **service token** for it.
-   Access is what keeps the hostname private; the API key alone is a second lock on the same
-   door, not a substitute, and `/mcp` sits behind neither of them.
+   ```
+   (http.host eq "things.example.com" and starts_with(http.request.uri.path, "/mcp"))
+   ```
 
-## In the app
+   Action: **Block**. Your local Claude connector keeps using `/mcp` over the LAN or loopback,
+   which this does not touch.
 
-Settings → Connection:
+Then in the app: the server URL and the API key from `.env.things`. Leave both Cloudflare fields
+blank. Tap **Test connection**.
 
-| Field | Value |
-|---|---|
-| Server | `https://things.<your domain>` |
-| API key | `API_KEY` from `~/docker/things-cloud/.env.things` |
-| Cloudflare Access client ID | the service token's id, ending `.access` |
-| Cloudflare Access client secret | the service token's secret |
+What is left protecting the account is one long random bearer token over HTTPS, which is the
+ordinary posture for an API token and is fine.
 
-Then **Test connection**. It fetches a real snapshot and tells you what it found, or which of the
-four things was wrong — a refused key, a refused Access token, an unreachable host, or an address
-this build will not send a key to.
+## If you want a second lock: Cloudflare Access
+
+Optional, and the only reason the app has those two extra fields. Put an Access policy on the
+hostname and create a **service token**; the app then sends `CF-Access-Client-Id` and
+`CF-Access-Client-Secret` on every request, and anything without them never reaches the server.
+
+It buys two things over the WAF rule: the hostname stops answering to scanners entirely, and a
+leaked API key alone is not enough to use it. It costs a second credential to carry, and it is
+the thing to blame first when the app says it cannot connect.
+
+If you use it, fill in both fields; a bad token shows as "Cloudflare Access refused the request"
+rather than as a network error.
 
 ## Using it at home only
 
@@ -75,5 +107,6 @@ By default it is loopback-only, which would need this in its compose file:
       - "192.168.0.x:8097:8080"   # the LAN address of this host
 ```
 
-Think before doing that: anyone on the network then has the account, with only the key in the
-way. The signed release build refuses cleartext entirely.
+Think before doing that: anyone on the network then has the account, `/mcp` and all, with only
+the key in the way and nothing in the way of `/mcp`. The signed release build refuses cleartext
+entirely.

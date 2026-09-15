@@ -35,14 +35,18 @@ See [docs/connecting-the-phone.md](docs/connecting-the-phone.md) for the tunnel 
 policy in front of it.
 
 
-Settings → Connection wants the address of your `things-cloud` server and its `API_KEY`. The
-key speaks for a whole Things account, so a release build will only send it over HTTPS; the
-intended path is a Cloudflare Tunnel with an Access policy in front, and the two Cloudflare
-service-token fields are there for that. A preview (debug) build additionally accepts an
-`http://` address on a private network, for use at home.
+Settings → Connection wants two things: the address of your `things-cloud` server and its
+`API_KEY`. There is no Things account password to enter — the backend holds the account and
+speaks for it, and the key is the key to *that server*, which is what makes it rotatable after
+a lost phone without touching your Things login.
 
-The backend serves its MCP endpoint with no authentication at all, so do not expose it
-without Access or a VPN in front of it.
+The key stands in for the whole account, so a release build sends it over HTTPS only; a preview
+(debug) build also accepts an `http://` address on a private network, for use at home.
+
+One thing to get right before exposing the server: its `/mcp` endpoint has **no authentication
+at all**, by design, so that a local Claude connector can use it. Block that path at Cloudflare,
+or put Access in front of the hostname. The two Cloudflare fields in Settings are for the latter
+and are otherwise left blank.
 
 ## Shape
 
