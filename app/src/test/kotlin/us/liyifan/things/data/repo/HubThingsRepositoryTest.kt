@@ -159,15 +159,16 @@ class HubThingsRepositoryTest {
         assertEquals(listOf(create.minted), model().tasksByProject.getValue(realProject).map { it.id })
     }
 
-    @Test fun `completing removes the row now and tells the server after`() = runTest {
+    @Test fun `completing takes the row out of its lists and tells the server after`() = runTest {
         seed(tasks = listOf(TaskDto(id = "t1", title = "Alpha")), views = ViewsDto(today = listOf("t1")))
         repo.completeTask("t1", done = true)
 
-        assertNull(model().tasksById["t1"])
         assertTrue(model().view(ViewId.TODAY).isEmpty())
 
         repo.processor.drain()
         assertEquals(TaskAction.COMPLETE, api.only<FakeThingsApi.Call.Action>().single().action)
+        repo.forgetCompleted("t1")
+        assertNull(model().tasksById["t1"])
     }
 
     @Test fun `an edit moves a to-do between lists at once`() = runTest {
@@ -253,10 +254,10 @@ class HubThingsRepositoryTest {
         val result = repo.refresh(sync = true)
 
         assertEquals(RefreshResult.SkippedPendingWrites, result)
-        assertNull(model().tasksById["t1"])
+        assertTrue(model().view(ViewId.TODAY).isEmpty())
     }
 
-    @Test fun `a refresh keeps rows this device has not managed to send`() = runTest {
+    @Test fun `an un-sent to-do is never dropped by a refresh, and survives to be sent`() = runTest {
         seed()
         api.failAllWith = ApiException.network("offline")
         val tempId = repo.createTask(NewTaskInit(title = "Unsent", whenValue = "today"))
@@ -267,12 +268,27 @@ class HubThingsRepositoryTest {
             tasks = listOf(TaskDto(id = "t9", title = "From the server")),
             views = ViewsDto(today = listOf("t9")),
         )
+
+        // Not applied at all while the create is queued — even forced, because force means
+        // "draw it though someone is reading", not "overwrite work not yet sent".
+        assertEquals(RefreshResult.SkippedPendingWrites, repo.refresh(sync = true, force = true))
+        assertNotNull(model().tasksById[tempId])
+
+        repo.processor.drain()
+        val realId = api.only<FakeThingsApi.Call.CreateTask>().single().minted
+        api.snapshotToReturn = SnapshotDto(
+            today = TODAY,
+            tasks = listOf(
+                TaskDto(id = "t9", title = "From the server"),
+                TaskDto(id = realId, title = "Unsent", scheduledDate = TODAY),
+            ),
+            views = ViewsDto(today = listOf("t9", realId)),
+        )
         repo.refresh(sync = true, force = true)
 
         val m = model()
-        assertEquals("the server's row and the un-sent one both stand", 2, m.snapshot.tasks.size)
-        assertNotNull(m.tasksById[tempId])
-        assertEquals(setOf("t9", tempId), m.view(ViewId.TODAY).map { it.id }.toSet())
+        assertEquals(setOf("t9", realId), m.view(ViewId.TODAY).map { it.id }.toSet())
+        assertNull("the provisional row is gone, not duplicated", m.tasksById[tempId])
     }
 
     // -- staging ------------------------------------------------------------------------------
@@ -327,7 +343,7 @@ class HubThingsRepositoryTest {
         val result = repo.refresh(sync = true)
 
         assertEquals(RefreshResult.SkippedPendingWrites, result)
-        assertNull("a completed to-do must not come back", model().tasksById["t1"])
+        assertTrue("a completed to-do must not come back", model().view(ViewId.TODAY).isEmpty())
     }
 
     @Test fun `an unexpected failure drops the row rather than wedging the queue behind it`() = runTest {
