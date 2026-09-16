@@ -56,6 +56,7 @@ import us.liyifan.things.ui.pickers.MovePicker
 import us.liyifan.things.ui.pickers.TagPicker
 import us.liyifan.things.ui.pickers.WhenPicker
 import us.liyifan.things.ui.screens.AreaScreen
+import us.liyifan.things.ui.screens.ConnectScreen
 import us.liyifan.things.ui.screens.ConnectionStatus
 import us.liyifan.things.ui.screens.FlatListScreen
 import us.liyifan.things.ui.screens.GroupedListScreen
@@ -151,7 +152,15 @@ fun ThingsAppUi(
     ) {
         val m = model
         if (m == null) {
-            LoadingOrConnect(connection = connection, version = version)
+            // Nothing has ever synced. If the server cannot be reached, this is where a first
+            // install would otherwise strand itself: a "Loading…" with no error and no route to
+            // Settings, needing the app's data cleared to escape.
+            NotYetLoaded(
+                connection = connection,
+                error = syncState.lastError,
+                refreshing = syncState.refreshing,
+                onRetry = { viewModel.refresh(sync = true, force = true) },
+            )
             return@Box
         }
 
@@ -176,7 +185,7 @@ fun ThingsAppUi(
             popExitTransition = { motion.popExit() },
         ) {
             composable<Route.Connect> {
-                us.liyifan.things.ui.screens.ConnectScreen(
+                ConnectScreen(
                     config = connection.config,
                     onConfigChange = connection.onChange,
                     status = connection.status,
@@ -395,20 +404,36 @@ private fun syncLabel(lastSyncedAt: Long, pendingWrites: Int): String = when {
     }
 }
 
+/**
+ * Before the first snapshot has ever arrived.
+ *
+ * Unconfigured, that is simply the Connect screen. Configured but unable to reach the server, it
+ * has to stay the Connect screen too, with the reason written above it — the alternative is an
+ * app that shows "Loading…" forever with no way back to the settings that would fix it.
+ */
 @Composable
-private fun LoadingOrConnect(connection: ConnectionUi, version: String) {
-    if (!connection.configured) {
-        us.liyifan.things.ui.screens.ConnectScreen(
+private fun NotYetLoaded(
+    connection: ConnectionUi,
+    error: String?,
+    refreshing: Boolean,
+    onRetry: () -> Unit,
+) {
+    if (!connection.configured || error != null) {
+        ConnectScreen(
             config = connection.config,
             onConfigChange = connection.onChange,
-            status = connection.status,
+            status = when {
+                error != null -> ConnectionStatus.Problem("Could not load anything from the server: $error")
+                else -> connection.status
+            },
             onTest = connection.onTest,
             onSave = connection.onSave,
+            onRetry = if (error != null && !refreshing) onRetry else null,
         )
     } else {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             androidx.compose.material3.Text(
-                "Loading…",
+                if (refreshing) "Loading\u2026" else "Waiting for the server\u2026",
                 style = ThingsTheme.type.empty,
                 color = ThingsTheme.colors.text3,
             )

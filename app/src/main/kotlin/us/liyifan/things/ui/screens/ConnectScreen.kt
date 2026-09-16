@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import us.liyifan.things.data.settings.ConnectionConfig
 import us.liyifan.things.ui.components.PageHeader
+import us.liyifan.things.ui.components.TextButton
 import us.liyifan.things.ui.theme.ThingsTheme
 
 /**
@@ -27,6 +28,8 @@ fun ConnectScreen(
     status: ConnectionStatus,
     onTest: () -> Unit,
     onSave: () -> Unit,
+    /** Offered when the details look right but the server did not answer. */
+    onRetry: (() -> Unit)? = null,
 ) {
     val colors = ThingsTheme.colors
     Column(
@@ -53,5 +56,8 @@ fun ConnectScreen(
             onTest = onTest,
             onSave = onSave,
         )
+        if (onRetry != null) {
+            TextButton(text = "Try again", onClick = onRetry, modifier = Modifier.padding(top = 8.dp))
+        }
     }
 }

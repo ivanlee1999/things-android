@@ -11,6 +11,12 @@ package us.liyifan.things.model
 /** Things' own order within a list: the manual index, then the title to break ties. */
 private val byIndex = compareBy<Item> { it.index }.thenBy { it.title.lowercase() }
 
+/**
+ * Built once per snapshot and never mutated, which is worth telling Compose: every screen takes
+ * one of these, and an unstable parameter means every row recomposes on any change. That costs
+ * little on a phone and a visible flash on e-paper.
+ */
+@androidx.compose.runtime.Immutable
 class Model(val snapshot: Snapshot) {
     val today: DateStr get() = snapshot.today
 
@@ -188,11 +194,19 @@ class Model(val snapshot: Snapshot) {
     }
 
     /** A project's rows: the unheaded ones, then each heading with its own. */
+    /**
+     * A project's rows: the unheaded ones, then each heading with its own.
+     *
+     * "Unheaded" has to mean "not under a heading *of this project*". Testing only whether the
+     * heading exists at all would drop a to-do whose heading belongs somewhere else — it would
+     * match no section here and simply vanish from the screen, which the mirror makes possible
+     * whenever a task and its heading disagree about their project.
+     */
     fun projectSections(projectId: String, tasks: List<Item>): ProjectSections {
         val headings = headingsByProject[projectId].orEmpty()
-        val unheaded = tasks.filter { it.headingId == null || !headingsById.containsKey(it.headingId) }
+        val here = headings.mapTo(mutableSetOf()) { it.id }
         return ProjectSections(
-            unheaded = unheaded,
+            unheaded = tasks.filter { it.headingId == null || it.headingId !in here },
             headed = headings.map { h -> HeadingSection(h, tasks.filter { it.headingId == h.id }) },
         )
     }

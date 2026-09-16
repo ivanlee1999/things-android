@@ -161,6 +161,21 @@ class DeriveTest {
         assertEquals(listOf("o"), sections.unheaded.map { it.id })
     }
 
+    @Test fun `a task whose heading belongs to another project is not lost`() {
+        // The mirror can hold a task in one project under a heading in another. Matching on
+        // "does this heading exist anywhere" would put it in no section at all, and it would
+        // disappear from the screen rather than appear in the wrong place.
+        val model = buildModel(
+            snapshot.copy(
+                headings = snapshot.headings + heading("hOther", "ph", "Elsewhere"),
+                tasks = listOf(task("stray", projectId = "pw", headingId = "hOther")),
+            ),
+        )
+        val sections = model.projectSections("pw", model.tasksByProject.getValue("pw"))
+        assertEquals(listOf("stray"), sections.unheaded.map { it.id })
+        assertTrue(sections.headed.all { it.tasks.isEmpty() })
+    }
+
     @Test fun `logbook groups by local completion day and keeps undated rows`() {
         val groups = logbookGroups(listOf(
             task("l1", completedAt = "2026-09-15T20:00:00Z"),
