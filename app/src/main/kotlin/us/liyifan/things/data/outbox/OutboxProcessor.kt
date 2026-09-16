@@ -1,6 +1,7 @@
 package us.liyifan.things.data.outbox
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -35,6 +36,12 @@ class OutboxProcessor(
     private val onIdResolved: suspend (tempId: String, realId: String) -> Unit = { _, _ -> },
     private val onDropped: suspend (message: String) -> Unit = { },
     private val now: () -> Long = System::currentTimeMillis,
+    /**
+     * Shared with the repository's local writes. An id swap rewrites rows the user may be
+     * editing at that moment; without one lock between them, an edit read before the swap is
+     * written back after it, reinstating a provisional id whose create has already gone.
+     */
+    private val writeLock: Mutex = Mutex(),
 ) {
     private val outbox = db.outboxDao()
     private val mutex = Mutex()
@@ -63,18 +70,45 @@ class OutboxProcessor(
             try {
                 val mintedId = send(op)
                 val tempId = op.mintsFor
-                if (tempId != null && mintedId != null) resolve(tempId, mintedId)
-                outbox.delete(row.id)
+                if (tempId != null && mintedId != null) {
+                    // The id swap and the removal of this row commit together. Apart, a crash
+                    // between them would leave the create queued against a to-do the server has
+                    // already made, and the next drain would make a second one.
+                    resolve(tempId, mintedId, done = row.id)
+                } else {
+                    outbox.delete(row.id)
+                }
                 sent++
-            } catch (e: ApiException) {
-                if (!e.permanent) {
-                    outbox.recordFailure(row.id, e.message, now())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val api = e as? ApiException
+                val transient = api != null && !api.permanent
+                if (transient) {
+                    // The server was not at fault for long enough to give up on: a network that
+                    // came and went, or its own sync to Things Cloud failing. Only failures the
+                    // server actually answered count towards giving up, or a fortnight in a
+                    // basement would throw away perfectly good work.
+                    val counts = api.kind != ApiException.Kind.NETWORK
+                    val attempts = row.attempts + if (counts) 1 else 0
+                    if (counts && attempts >= MAX_SERVER_ATTEMPTS) {
+                        outbox.delete(row.id)
+                        dropDependents(op)
+                        needsFullRefresh = true
+                        onDropped("Gave up saving ${op.describe} after $attempts tries: ${e.message}")
+                        continue
+                    }
+                    if (counts) outbox.recordFailure(row.id, e.message, now())
                     return@withLock Result.Blocked(e.message ?: "cannot reach the server", outbox.count())
                 }
+                // Either the server refused it, which it will do identically forever, or
+                // something unforeseen went wrong turning this row into a request. Both have to
+                // drop the row: leaving it at the head of a queue drained in order would stop
+                // every later write from ever being sent.
                 outbox.delete(row.id)
                 dropDependents(op)
                 needsFullRefresh = true
-                onDropped("Could not save ${op.describe}: ${e.message}")
+                onDropped("Could not save ${op.describe}: ${e.message ?: e::class.simpleName}")
             }
         }
         pruneIdMap()
@@ -99,29 +133,16 @@ class OutboxProcessor(
 
     /** Returns the id the server minted, for the ops that create something. */
     private suspend fun send(op: OutboxOp): String? = when (op) {
-        is OutboxOp.CreateTask -> {
-            val id = api.createTask(
-                CreateTaskRequest(
-                    title = op.title,
-                    note = op.note,
-                    whenValue = op.whenValue,
-                    deadline = op.deadline,
-                    project = op.project,
-                    tags = op.tags.takeIf { it.isNotEmpty() }?.joinToString(","),
-                ),
-            )
-            // Create takes no heading or area, so a to-do filed under either needs a second call.
-            if (op.heading != null || op.area != null) {
-                api.editTask(
-                    us.liyifan.things.model.EditFields(
-                        uuid = id,
-                        heading = op.heading,
-                        area = op.area,
-                    ),
-                )
-            }
-            id
-        }
+        is OutboxOp.CreateTask -> api.createTask(
+            CreateTaskRequest(
+                title = op.title,
+                note = op.note,
+                whenValue = op.whenValue,
+                deadline = op.deadline,
+                project = op.project,
+                tags = op.tags.takeIf { it.isNotEmpty() }?.joinToString(","),
+            ),
+        )
         is OutboxOp.EditTask -> { api.editTask(op.fields); null }
         is OutboxOp.TaskActionOp -> { api.taskAction(TaskAction.valueOf(op.action), op.uuid); null }
         is OutboxOp.MoveTask -> { api.moveTask(op.uuid, op.to); null }
@@ -147,7 +168,8 @@ class OutboxProcessor(
      * Swaps a provisional id for the real one everywhere it is held: the row itself, its
      * children, its list membership, and every write still queued behind it.
      */
-    private suspend fun resolve(tempId: String, realId: String) = db.withTransaction {
+    private suspend fun resolve(tempId: String, realId: String, done: Long?) = writeLock.withLock {
+      db.withTransaction {
         val tasks = db.taskDao()
         outbox.putIdMap(IdMapEntity(tempId, realId, now()))
 
@@ -170,27 +192,46 @@ class OutboxProcessor(
             outbox.setPayload(row.id, json.encodeToString(OutboxOp.serializer(), op.rewriteIds(map)))
             if (row.tempId == tempId) outbox.setTempId(row.id, null)
         }
+        done?.let { outbox.delete(it) }
         db.metaDao().bumpGeneration()
         onIdResolved(tempId, realId)
+      }
     }
 
     /**
      * A create that was refused leaves orphans: the local row, and every queued write that names
      * it. Sending those would fail one by one with the same message, so they go together.
      */
-    private suspend fun dropDependents(failed: OutboxOp) = db.withTransaction {
-        val tempId = failed.mintsFor ?: return@withTransaction
+    private suspend fun dropDependents(failed: OutboxOp) = writeLock.withLock {
+      db.withTransaction {
+        val root = failed.mintsFor ?: return@withTransaction
+        // Follow the chain: an area refused takes its projects, and those take their to-dos.
+        // Stopping at the first level would leave rows on screen that can never be sent.
+        val doomed = mutableSetOf(root)
+        var grew = true
+        while (grew) {
+            grew = false
+            outbox.all().forEach { row ->
+                val op = decode(row) ?: return@forEach
+                if (op.referencedIds().none { it in doomed }) return@forEach
+                op.mintsFor?.let { if (doomed.add(it)) grew = true }
+            }
+        }
         outbox.all().forEach { row ->
             val op = decode(row) ?: return@forEach
-            if (tempId in op.referencedIds()) outbox.delete(row.id)
+            if (op.referencedIds().any { it in doomed }) outbox.delete(row.id)
         }
-        db.checklistDao().deleteForTask(tempId)
-        db.checklistDao().delete(tempId)
-        db.taskDao().delete(tempId)
-        db.areaDao().delete(tempId)
-        db.tagDao().delete(tempId)
-        db.viewDao().remove(tempId)
+        doomed.forEach { id ->
+            db.checklistDao().deleteForTask(id)
+            db.checklistDao().delete(id)
+            db.taskDao().deleteInProject(id)
+            db.taskDao().delete(id)
+            db.areaDao().delete(id)
+            db.tagDao().delete(id)
+            db.viewDao().remove(id)
+        }
         db.metaDao().bumpGeneration()
+      }
     }
 
     private suspend fun pruneIdMap() {
@@ -199,5 +240,8 @@ class OutboxProcessor(
 
     private companion object {
         const val ID_MAP_TTL_MS = 24L * 60 * 60 * 1000
+
+        /** How many answered-and-failed attempts before a write is abandoned. */
+        const val MAX_SERVER_ATTEMPTS = 10
     }
 }

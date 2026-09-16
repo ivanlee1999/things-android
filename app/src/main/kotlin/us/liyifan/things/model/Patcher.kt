@@ -73,14 +73,23 @@ data class EditFields(
         project?.takeIf { it != NONE },
         heading?.takeIf { it != NONE },
         area?.takeIf { it != NONE },
-    )
+    ) + tagIds()
 
     fun rewriteIds(map: Map<String, String>): EditFields = copy(
         uuid = map[uuid] ?: uuid,
         project = project.rewrite(map),
         heading = heading.rewrite(map),
         area = area.rewrite(map),
+        // Tags travel as one comma-separated string, so they have to be taken apart to be
+        // rewritten; a tag created offline has a provisional id like anything else.
+        tags = tagIds().takeIf { it.isNotEmpty() }
+            ?.joinToString(",") { map[it] ?: it }
+            ?: tags,
     )
+
+    /** The individual tag ids, or nothing when the field is absent or the "none" keyword. */
+    private fun tagIds(): List<String> =
+        tags?.takeIf { it != NONE }?.split(",")?.filter { it.isNotBlank() }.orEmpty()
 
     /**
      * "none" is how this wire clears a field, not an id, so it is never substituted — otherwise

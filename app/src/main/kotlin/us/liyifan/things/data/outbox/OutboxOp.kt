@@ -35,17 +35,16 @@ sealed class OutboxOp {
         val whenValue: String? = null,
         val deadline: String? = null,
         val project: String? = null,
-        val heading: String? = null,
-        val area: String? = null,
         val tags: List<String> = emptyList(),
     ) : OutboxOp() {
         override val mintsFor get() = tempId
         override val describe get() = "the to-do “${title.ifBlank { "New To-Do" }}”"
-        override fun referencedIds() = setOfNotNull(tempId, project, heading, area)
+        override fun referencedIds() = setOfNotNull(tempId, project) + tags
         override fun rewriteIds(map: Map<String, String>) = copy(
             project = project?.let { map[it] ?: it },
-            heading = heading?.let { map[it] ?: it },
-            area = area?.let { map[it] ?: it },
+            // A tag made offline carries a provisional id too, and a create still holding one
+            // would hand the server an id it has never heard of.
+            tags = tags.map { map[it] ?: it },
         )
     }
 

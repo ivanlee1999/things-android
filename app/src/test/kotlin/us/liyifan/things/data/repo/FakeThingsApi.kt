@@ -16,7 +16,7 @@ import us.liyifan.things.model.EditFields
  * It mints ids the way the real one does (a short opaque string, nothing like a temp id) so the
  * tests exercise the swap rather than assuming it.
  */
-class FakeThingsApi : ThingsApi {
+open class FakeThingsApi : ThingsApi {
 
     sealed interface Call {
         data class CreateTask(val request: CreateTaskRequest, val minted: String) : Call

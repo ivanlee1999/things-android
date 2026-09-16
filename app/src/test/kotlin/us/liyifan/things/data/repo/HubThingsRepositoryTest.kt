@@ -133,8 +133,11 @@ class HubThingsRepositoryTest {
 
         val create = api.only<FakeThingsApi.Call.CreateTask>().single()
         assertEquals("p1", create.request.project)
-        // The create endpoint takes no heading, so the heading arrives as an edit.
-        assertEquals("h1", api.only<FakeThingsApi.Call.EditTask>().single().fields.heading)
+        // The create endpoint takes no heading, so the heading is its own queued write, sent
+        // against the real id once the create ahead of it has resolved.
+        val edit = api.only<FakeThingsApi.Call.EditTask>().single()
+        assertEquals("h1", edit.fields.heading)
+        assertEquals(create.minted, edit.fields.uuid)
         assertNotNull(model().tasksById[create.minted])
         assertNull(model().tasksById[tempId])
     }
@@ -325,6 +328,104 @@ class HubThingsRepositoryTest {
 
         assertEquals(RefreshResult.SkippedPendingWrites, result)
         assertNull("a completed to-do must not come back", model().tasksById["t1"])
+    }
+
+    @Test fun `an unexpected failure drops the row rather than wedging the queue behind it`() = runTest {
+        seed()
+        // Not an ApiException at all — a bug turning the op into a request, say. The queue is
+        // drained strictly in order, so a row that throws forever at the head would stop every
+        // later write from ever being sent.
+        api.failAllWith = null
+        val hostile = object : FakeThingsApi() {
+            override suspend fun createTask(request: us.liyifan.things.data.api.CreateTaskRequest): String =
+                throw IllegalStateException("something unforeseen")
+        }
+        val repo2 = HubThingsRepository(db = db, api = hostile, store = store, json = json)
+        repo2.createTask(NewTaskInit(title = "doomed"))
+        repo2.createTask(NewTaskInit(title = "also queued"))
+        assertEquals(2, repo2.processor.pending())
+
+        val result = repo2.processor.drain()
+
+        assertTrue(result is OutboxProcessor.Result.Drained)
+        assertEquals("both rows were dealt with, not left blocking", 0, repo2.processor.pending())
+    }
+
+    @Test fun `an offline stretch never counts towards giving up`() = runTest {
+        seed()
+        api.failAllWith = ApiException.network("offline")
+        repo.createTask(NewTaskInit(title = "written on a train"))
+
+        // Far more attempts than the give-up threshold, all of them network failures.
+        repeat(25) { repo.processor.drain() }
+
+        assertEquals("the to-do is still queued", 1, repo.processor.pending())
+        api.failAllWith = null
+        repo.processor.drain()
+        assertEquals(1, api.only<FakeThingsApi.Call.CreateTask>().size)
+    }
+
+    @Test fun `un-ticking from the Logbook actually does something`() = runTest {
+        seed()
+        api.logbookToReturn = listOf(
+            TaskDto(id = "done1", title = "Was finished", status = 3, completedAt = "2026-09-15T10:00:00Z"),
+        )
+        repo.loadLogbook()
+
+        repo.completeTask("done1", done = false)
+
+        // The row is not in the open world when it is reopened — it is in the cached Logbook,
+        // which is what an earlier version failed to look at, so the tick did nothing at all.
+        val m = model()
+        assertNotNull(m.tasksById["done1"])
+        assertEquals(us.liyifan.things.model.Status.OPEN, m.tasksById.getValue("done1").status)
+        repo.processor.drain()
+        assertEquals(TaskAction.UNCOMPLETE, api.only<FakeThingsApi.Call.Action>().single().action)
+    }
+
+    @Test fun `a tick is queued before the settle pause, not after it`() = runTest {
+        seed(tasks = listOf(TaskDto(id = "t1", title = "Alpha")), views = ViewsDto(today = listOf("t1")))
+        repo.completeTask("t1", done = true)
+
+        // Durable immediately: killing the app during the pause cannot lose it.
+        assertEquals(1, repo.processor.pending())
+        // And still on screen, ticked, so the pause has something to show.
+        assertEquals(us.liyifan.things.model.Status.COMPLETED, model().tasksById.getValue("t1").status)
+        assertTrue(model().view(ViewId.TODAY).isEmpty())
+
+        repo.forgetCompleted("t1")
+        assertNull(model().tasksById["t1"])
+    }
+
+    @Test fun `a queued write survives a forced refresh`() = runTest {
+        seed(tasks = listOf(TaskDto(id = "t1", title = "Alpha")), views = ViewsDto(today = listOf("t1")))
+        api.failAllWith = ApiException.network("offline")
+        repo.trashTask("t1")
+        api.failAllWith = null
+
+        // force means "draw it even though someone is reading", never "overwrite work that has
+        // not been sent" — pull-to-refresh passes force, and used to be able to undo a delete.
+        assertEquals(RefreshResult.SkippedPendingWrites, repo.refresh(sync = true, force = true))
+        assertNull(model().tasksById["t1"])
+    }
+
+    @Test fun `a refused create takes the rows of everything beneath it`() = runTest {
+        seed()
+        api.failAllWith = ApiException.network("offline")
+        val projectId = repo.createProject("Doomed", areaId = null)
+        val headingId = repo.createHeading("Beneath it", projectId)
+        val taskId = repo.createTask(NewTaskInit(title = "Beneath that", project = projectId))
+        api.failAllWith = null
+        api.failNextWith = ApiException(400, "no")
+
+        repo.processor.drain()
+
+        // Nothing queued, and no orphans left on screen that could never be sent.
+        assertEquals(0, repo.processor.pending())
+        val m = model()
+        assertNull(m.projectsById[projectId])
+        assertNull(m.headingsById[headingId])
+        assertNull(m.tasksById[taskId])
     }
 
     private companion object {

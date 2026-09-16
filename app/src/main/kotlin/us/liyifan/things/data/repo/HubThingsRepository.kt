@@ -79,6 +79,7 @@ class HubThingsRepository(
         onIdResolved = { temp, real -> _idRemaps.emit(temp to real) },
         onDropped = { message -> _toasts.emit(message) },
         now = now,
+        writeLock = writeLock,
     )
 
     override val snapshot: Flow<Snapshot?> = store.snapshots()
@@ -89,7 +90,7 @@ class HubThingsRepository(
     // -- reading ------------------------------------------------------------------------------
 
     override suspend fun refresh(sync: Boolean, force: Boolean): RefreshResult {
-        if (!force && processor.pending() > 0) {
+        if (processor.pending() > 0) {
             kickOutbox()
             return RefreshResult.SkippedPendingWrites
         }
@@ -107,7 +108,7 @@ class HubThingsRepository(
                 // to-do completed while it was in flight would otherwise be resurrected by an
                 // answer that predates it.
                 writeLock.withLock {
-                    if (!force && processor.pending() > 0) {
+                    if (processor.pending() > 0) {
                         _syncState.update { it.copy(refreshing = false) }
                         kickOutbox()
                         return RefreshResult.SkippedPendingWrites
@@ -124,7 +125,12 @@ class HubThingsRepository(
 
     override suspend fun applyStagedIfAny() {
         val dto = staged.take() ?: return
-        writeLock.withLock { applyDto(dto) }
+        writeLock.withLock {
+            // Held back snapshots go stale the same way fresh ones do: anything queued since it
+            // was fetched is missing from it, and drawing it would undo that work.
+            if (processor.pending() > 0) return
+            applyDto(dto)
+        }
     }
 
     private suspend fun applyDto(dto: SnapshotDto) {
@@ -176,10 +182,17 @@ class HubThingsRepository(
 
     // -- writing ------------------------------------------------------------------------------
 
-    /** Patch locally, queue the write, ask for a send. The three steps every mutation takes. */
-    private suspend fun write(op: OutboxOp?, patch: suspend () -> Unit) = writeLock.withLock {
+    /**
+     * Patch locally, queue the write, ask for a send. The three steps every mutation takes.
+     *
+     * The row is read inside the lock as well, by [patch] itself. Reading it outside left a gap
+     * in which the outbox could resolve a provisional id underneath: the edit would then be
+     * written back under an id the server had just replaced, putting the row back and queueing
+     * a write with no create ahead of it.
+     */
+    private suspend fun write(patch: suspend () -> OutboxOp?) = writeLock.withLock {
         db.withTransaction {
-            patch()
+            val op = patch()
             op?.let { processor.enqueue(it) }
             db.metaDao().bumpGeneration()
         }
@@ -195,108 +208,151 @@ class HubThingsRepository(
         val tempId = newTempId()
         val today = store.today()
         val task = newProvisionalTask(tempId, init, today, Instant.ofEpochMilli(now()).toString())
-        write(
+        write {
+            putTask(task)
+            store.writeViews(store.readViews().reclassify(task, today))
             OutboxOp.CreateTask(
                 tempId = tempId,
                 title = init.title,
                 note = init.note,
                 whenValue = init.whenValue,
                 project = init.project,
-                heading = init.heading,
-                area = init.area,
                 tags = init.tags,
-            ),
-        ) {
-            putTask(task)
-            store.writeViews(store.readViews().reclassify(task, today))
+            )
+        }
+        if (init.heading != null || init.area != null) {
+            // Queued separately, naming the provisional id: the create ahead of it resolves
+            // that id first, and this is then sent against the real one.
+            write {
+                OutboxOp.EditTask(
+                    us.liyifan.things.model.EditFields(
+                        uuid = tempId,
+                        heading = init.heading,
+                        area = init.area,
+                    ),
+                )
+            }
         }
         return tempId
     }
 
     override suspend fun updateTask(id: String, patch: TaskPatch) {
         if (patch.isEmpty) return
-        val existing = db.taskDao().byId(id) ?: return
-        val today = store.today()
-        val before = existing.toModel(db.taskDao().tagsOf(id))
-        val after = applyTaskPatch(before, patch, today)
-        write(OutboxOp.EditTask(patch.toEditFields(id))) {
+        write {
+            val existing = db.taskDao().byId(id) ?: return@write null
+            val today = store.today()
+            val after = applyTaskPatch(existing.toModel(db.taskDao().tagsOf(id)), patch, today)
             putTask(after)
             // Projects and headings are not in the built-in lists, so only a task re-files.
             if (after.isTask) store.writeViews(store.readViews().reclassify(after, today))
+            OutboxOp.EditTask(patch.toEditFields(id))
         }
     }
 
+    /**
+     * Ticking, and un-ticking from the Logbook.
+     *
+     * A completed row is marked rather than deleted, and leaves the built-in lists at once.
+     * [forgetCompleted] removes it a beat later, which is what gives the row time to be seen
+     * ticked without the write itself waiting on that pause — kill the app during it and the
+     * completion is already queued.
+     *
+     * Reopening has to look somewhere else entirely: a completed to-do is not in the open
+     * world, it is in the cached Logbook page the user is looking at.
+     */
     override suspend fun completeTask(id: String, done: Boolean) {
-        val existing = db.taskDao().byId(id) ?: return
-        val item = existing.toModel(db.taskDao().tagsOf(id))
-        val action = if (done) "COMPLETE" else "UNCOMPLETE"
-        write(OutboxOp.TaskActionOp(action, id)) {
+        write {
             if (done) {
-                // A completed row leaves the open world; it comes back from the Logbook.
-                db.taskDao().delete(id)
+                val existing = db.taskDao().byId(id) ?: return@write null
+                putTask(
+                    existing.toModel(db.taskDao().tagsOf(id))
+                        .copy(status = Status.COMPLETED, completedAt = Instant.ofEpochMilli(now()).toString()),
+                )
                 db.viewDao().remove(id)
             } else {
-                val reopened = item.copy(status = Status.OPEN, completedAt = null)
+                val logged = store.loggedItem(id) ?: db.taskDao().byId(id)?.toModel()
+                    ?: return@write null
+                val reopened = logged.copy(status = Status.OPEN, completedAt = null)
                 putTask(reopened)
                 db.logbookDao().delete(id)
                 if (reopened.isTask) {
                     store.writeViews(store.readViews().reclassify(reopened, store.today()))
                 }
             }
+            OutboxOp.TaskActionOp(if (done) "COMPLETE" else "UNCOMPLETE", id)
         }
     }
 
-    override suspend fun cancelTask(id: String) = write(OutboxOp.TaskActionOp("CANCEL", id)) {
-        db.taskDao().delete(id)
-        db.viewDao().remove(id)
+    /** Drops a ticked row once it has been seen. No write: the server was told at the tick. */
+    override suspend fun forgetCompleted(id: String) = writeLock.withLock {
+        db.withTransaction {
+            val row = db.taskDao().byId(id)
+            if (row != null && row.status == Status.COMPLETED) {
+                db.taskDao().delete(id)
+                db.viewDao().remove(id)
+                db.metaDao().bumpGeneration()
+            }
+        }
     }
 
-    override suspend fun trashTask(id: String) = write(OutboxOp.TaskActionOp("TRASH", id)) {
+    override suspend fun cancelTask(id: String) = write {
         db.taskDao().delete(id)
         db.viewDao().remove(id)
+        OutboxOp.TaskActionOp("CANCEL", id)
     }
 
-    override suspend fun untrashTask(id: String) = write(OutboxOp.TaskActionOp("UNTRASH", id)) {
+    override suspend fun trashTask(id: String) = write {
+        db.taskDao().delete(id)
+        db.viewDao().remove(id)
+        OutboxOp.TaskActionOp("TRASH", id)
+    }
+
+    override suspend fun untrashTask(id: String) = write {
         db.logbookDao().deleteTrash(id)
+        OutboxOp.TaskActionOp("UNTRASH", id)
     }
 
     override suspend fun moveTask(id: String, to: String) {
-        val existing = db.taskDao().byId(id) ?: return
-        val today = store.today()
-        val moved = applyWhen(existing.toModel(db.taskDao().tagsOf(id)), to, today)
-        write(OutboxOp.MoveTask(id, to)) {
+        write {
+            val existing = db.taskDao().byId(id) ?: return@write null
+            val today = store.today()
+            val moved = applyWhen(existing.toModel(db.taskDao().tagsOf(id)), to, today)
             putTask(moved)
             store.writeViews(store.readViews().reclassify(moved, today))
+            OutboxOp.MoveTask(id, to)
         }
     }
 
     override suspend fun addChecklistItem(taskId: String, title: String): String {
         val tempId = newTempId()
-        val index = db.checklistDao().countFor(taskId)
-        write(OutboxOp.CreateChecklistItem(tempId, taskId, title)) {
+        write {
+            val index = db.checklistDao().countFor(taskId)
             db.checklistDao().put(
                 ChecklistEntity.from(
                     ChecklistItem(tempId, taskId, title, Status.OPEN, index, provisional = true),
                 ),
             )
+            OutboxOp.CreateChecklistItem(tempId, taskId, title)
         }
         return tempId
     }
 
     override suspend fun toggleChecklistItem(id: String, done: Boolean) {
-        val existing = db.checklistDao().byId(id) ?: return
-        val action = if (done) "COMPLETE" else "UNCOMPLETE"
-        write(OutboxOp.ChecklistActionOp(action, id)) {
+        write {
+            val existing = db.checklistDao().byId(id) ?: return@write null
             db.checklistDao().put(existing.copy(status = if (done) Status.COMPLETED else Status.OPEN))
+            OutboxOp.ChecklistActionOp(if (done) "COMPLETE" else "UNCOMPLETE", id)
         }
     }
 
-    override suspend fun deleteChecklistItem(id: String) =
-        write(OutboxOp.ChecklistActionOp("DELETE", id)) { db.checklistDao().delete(id) }
+    override suspend fun deleteChecklistItem(id: String) = write {
+        db.checklistDao().delete(id)
+        OutboxOp.ChecklistActionOp("DELETE", id)
+    }
 
     override suspend fun createProject(title: String, areaId: String?): String {
         val tempId = newTempId()
-        write(OutboxOp.CreateProject(tempId = tempId, title = title, area = areaId)) {
+        write {
             putTask(
                 Item(
                     id = tempId,
@@ -309,13 +365,14 @@ class HubThingsRepository(
                     provisional = true,
                 ),
             )
+            OutboxOp.CreateProject(tempId = tempId, title = title, area = areaId)
         }
         return tempId
     }
 
     override suspend fun createHeading(title: String, projectId: String): String {
         val tempId = newTempId()
-        write(OutboxOp.CreateHeading(tempId, title, projectId)) {
+        write {
             putTask(
                 Item(
                     id = tempId,
@@ -326,22 +383,27 @@ class HubThingsRepository(
                     provisional = true,
                 ),
             )
+            OutboxOp.CreateHeading(tempId, title, projectId)
         }
         return tempId
     }
 
     override suspend fun createArea(title: String): String {
         val tempId = newTempId()
-        val index = db.areaDao().maxIndex() + 1
-        write(OutboxOp.CreateArea(tempId, title)) {
+        write {
+            val index = db.areaDao().maxIndex() + 1
             db.areaDao().put(AreaEntity.from(Area(tempId, title, index), provisional = true))
+            OutboxOp.CreateArea(tempId, title)
         }
         return tempId
     }
 
     override suspend fun renameArea(id: String, title: String) {
-        val existing = db.areaDao().byId(id) ?: return
-        write(OutboxOp.EditArea(id, title)) { db.areaDao().put(existing.copy(title = title)) }
+        write {
+            val existing = db.areaDao().byId(id) ?: return@write null
+            db.areaDao().put(existing.copy(title = title))
+            OutboxOp.EditArea(id, title)
+        }
     }
 
     /**
@@ -370,9 +432,10 @@ class HubThingsRepository(
 
     override suspend fun createTag(title: String): String {
         val tempId = newTempId()
-        val index = db.tagDao().maxIndex() + 1
-        write(OutboxOp.CreateTag(tempId, title)) {
+        write {
+            val index = db.tagDao().maxIndex() + 1
             db.tagDao().put(TagEntity.from(Tag(tempId, title, index = index), provisional = true))
+            OutboxOp.CreateTag(tempId, title)
         }
         return tempId
     }

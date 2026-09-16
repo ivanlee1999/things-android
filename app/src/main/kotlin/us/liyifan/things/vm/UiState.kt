@@ -14,4 +14,10 @@ data class UiState(
     val settling: Set<String> = emptySet(),
     val toast: String? = null,
     val tagFilter: String? = null,
+    /**
+     * Provisional ids the server has since replaced. A route or an open sheet naming the old one
+     * is resolved through this, so creating a project and being taken straight to it does not
+     * end on an empty screen the moment the create comes back.
+     */
+    val idMap: Map<String, String> = emptyMap(),
 )

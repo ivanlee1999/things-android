@@ -20,8 +20,8 @@ class OutboxOpTest {
         json.decodeFromString(OutboxOp.serializer(), json.encodeToString(OutboxOp.serializer(), op))
 
     private val all = listOf(
-        OutboxOp.CreateTask("tmp-1", "Buy milk", whenValue = "today", project = "tmp-p", heading = "tmp-h", area = "tmp-a", tags = listOf("t1")),
-        OutboxOp.EditTask(EditFields(uuid = "tmp-1", title = "Buy oat milk", project = "tmp-p", area = "none")),
+        OutboxOp.CreateTask("tmp-1", "Buy milk", whenValue = "today", project = "tmp-p", tags = listOf("tmp-t")),
+        OutboxOp.EditTask(EditFields(uuid = "tmp-1", title = "Buy oat milk", project = "tmp-p", area = "none", heading = "tmp-h", tags = "tmp-t,real-tag")),
         OutboxOp.TaskActionOp("COMPLETE", "tmp-1"),
         OutboxOp.MoveTask("tmp-1", "today"),
         OutboxOp.CreateChecklistItem("tmp-c", "tmp-1", "the fridge one"),
@@ -49,6 +49,24 @@ class OutboxOpTest {
             // is the one id that legitimately survives a rewrite.
             assertEquals("$op left $left unrewritten", listOfNotNull(op.mintsFor), left)
         }
+    }
+
+    @Test fun `a tag created offline is rewritten wherever it is named`() {
+        // Tags reach the server as one comma-separated string, so they have to be taken apart
+        // to be rewritten. Missed, the server is handed an id it has never seen.
+        val create = OutboxOp.CreateTask("tmp-1", "x", tags = listOf("tmp-t"))
+        assertTrue("tmp-t" in create.referencedIds())
+        assertEquals(listOf("TG"), (create.rewriteIds(mapOf("tmp-t" to "TG")) as OutboxOp.CreateTask).tags)
+
+        val edit = OutboxOp.EditTask(EditFields(uuid = "u", tags = "tmp-t,kept"))
+        assertTrue("tmp-t" in edit.referencedIds())
+        assertEquals("TG,kept", (edit.rewriteIds(mapOf("tmp-t" to "TG")) as OutboxOp.EditTask).fields.tags)
+    }
+
+    @Test fun `clearing tags is a keyword, not a list of ids`() {
+        val edit = OutboxOp.EditTask(EditFields(uuid = "u", tags = "none"))
+        assertTrue(edit.referencedIds().none { it == "none" })
+        assertEquals("none", (edit.rewriteIds(mapOf("none" to "WRONG")) as OutboxOp.EditTask).fields.tags)
     }
 
     @Test fun `none is a keyword, not an id to rewrite`() {

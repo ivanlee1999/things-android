@@ -51,6 +51,12 @@ interface ThingsRepository {
     suspend fun createTask(init: NewTaskInit): String
     suspend fun updateTask(id: String, patch: TaskPatch)
     suspend fun completeTask(id: String, done: Boolean)
+
+    /**
+     * Removes a row ticked a moment ago. The write went out at the tick; this is only the end of
+     * the pause that lets the user see which row they hit.
+     */
+    suspend fun forgetCompleted(id: String)
     suspend fun cancelTask(id: String)
     suspend fun trashTask(id: String)
     suspend fun untrashTask(id: String)

@@ -155,6 +155,10 @@ class SnapshotStore(
         (if (scope == null) logbookDao.page() else logbookDao.forProject(scope))
             .mapNotNull { row -> runCatching { json.decodeFromString<TaskDto>(row.json).toModel() }.getOrNull() }
 
+    /** One cached Logbook row, which is where a completed to-do lives until it is reopened. */
+    suspend fun loggedItem(id: String): Item? = logbookDao.loggedById(id)
+        ?.let { row -> runCatching { json.decodeFromString<TaskDto>(row.json).toModel() }.getOrNull() }
+
     suspend fun putTrash(items: List<TaskDto>) = db.withTransaction {
         logbookDao.clearTrash()
         logbookDao.putTrash(

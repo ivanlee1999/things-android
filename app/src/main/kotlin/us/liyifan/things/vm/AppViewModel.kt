@@ -72,6 +72,9 @@ class AppViewModel(
                         selectedId = if (state.selectedId == temp) real else state.selectedId,
                         expandedId = if (state.expandedId == temp) real else state.expandedId,
                         settling = state.settling.map { if (it == temp) real else it }.toSet(),
+                        // Kept so that a screen opened on a brand new project — whose route
+                        // still names the provisional id — can follow it rather than going blank.
+                        idMap = state.idMap + (temp to real),
                     )
                 }
             }
@@ -146,19 +149,27 @@ class AppViewModel(
      * when the row is about to disappear and take the evidence with it.
      */
     fun completeTask(id: String, done: Boolean) = viewModelScope.launch {
-        if (done) {
-            _ui.update { it.copy(settling = it.settling + id) }
-            delay(ThingsMotion.SETTLE_MS)
-            _ui.update {
-                it.copy(
-                    settling = it.settling - id,
-                    expandedId = if (it.expandedId == id) null else it.expandedId,
-                )
-            }
-        }
+        // Recorded first, seen second. Queueing the write before the pause means killing the app
+        // mid-pause cannot lose the tick; the row stays on screen because completing it marks it
+        // rather than removing it.
         repository.completeTask(id, done)
-        if (!done) loadLogbook()
+        if (!done) {
+            loadLogbook()
+            return@launch
+        }
+        _ui.update { it.copy(settling = it.settling + id) }
+        delay(ThingsMotion.SETTLE_MS)
+        _ui.update {
+            it.copy(
+                settling = it.settling - id,
+                expandedId = if (it.expandedId == id) null else it.expandedId,
+            )
+        }
+        repository.forgetCompleted(resolve(id))
     }
+
+    /** The real id of a row that was created here, if the server has since named it. */
+    fun resolve(id: String): String = _ui.value.idMap[id] ?: id
 
     fun cancelTask(id: String) = viewModelScope.launch {
         closeIfOpen(id)

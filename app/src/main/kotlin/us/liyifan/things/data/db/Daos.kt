@@ -110,6 +110,7 @@ interface ViewDao {
 @Dao
 interface LogbookDao {
     @Query("SELECT * FROM logbook WHERE scope IS NULL ORDER BY completedAt DESC") suspend fun page(): List<LogbookEntity>
+    @Query("SELECT * FROM logbook WHERE id = :id LIMIT 1") suspend fun loggedById(id: String): LogbookEntity?
     @Query("SELECT * FROM logbook WHERE scope = :projectId ORDER BY completedAt DESC") suspend fun forProject(projectId: String): List<LogbookEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(rows: List<LogbookEntity>)
     @Query("DELETE FROM logbook WHERE scope IS NULL") suspend fun clearMain()

@@ -252,7 +252,7 @@ fun ThingsAppUi(
             }
             composable<Route.Project> { entry ->
                 val route = entry.toRoute<Route.Project>()
-                val project = m.projectsById[route.id]
+                val project = m.projectsById[viewModel.resolve(route.id)]
                 val logged by viewModel.loggedByProject.collectAsStateWithLifecycle()
                 if (project == null) {
                     us.liyifan.things.ui.components.EmptyState(
@@ -286,7 +286,7 @@ fun ThingsAppUi(
             }
             composable<Route.Area> { entry ->
                 val route = entry.toRoute<Route.Area>()
-                val area = m.areasById[route.id]
+                val area = m.areasById[viewModel.resolve(route.id)]
                 if (area != null) {
                     AreaScreen(
                         area = area,
@@ -515,16 +515,16 @@ private fun SheetHost(
 
         is Sheet.RowMenu -> ContextMenuSheet(
             entries = taskMenu(
-                onMove = { viewModel.moveTask(sheet.taskId, it) },
+                onMove = { viewModel.moveTask(viewModel.resolve(sheet.taskId), it) },
                 onOpenMovePicker = { onOpen(Sheet.Move(sheet.taskId)) },
-                onComplete = { viewModel.completeTask(sheet.taskId, true) },
-                onCancel = { viewModel.cancelTask(sheet.taskId) },
-                onDelete = { viewModel.trashTask(sheet.taskId) },
+                onComplete = { viewModel.completeTask(viewModel.resolve(sheet.taskId), true) },
+                onCancel = { viewModel.cancelTask(viewModel.resolve(sheet.taskId)) },
+                onDelete = { viewModel.trashTask(viewModel.resolve(sheet.taskId)) },
             ),
             onDismiss = onDismiss,
         )
 
-        is Sheet.When -> model.item(sheet.taskId)?.let { task ->
+        is Sheet.When -> model.item(viewModel.resolve(sheet.taskId))?.let { task ->
             ThingsSheet(onDismiss = onDismiss) {
                 WhenPicker(task) { value ->
                     viewModel.updateTask(task.id, TaskPatch(whenValue = Opt.of(value)))
@@ -533,7 +533,7 @@ private fun SheetHost(
             }
         }
 
-        is Sheet.Deadline -> model.item(sheet.taskId)?.let { task ->
+        is Sheet.Deadline -> model.item(viewModel.resolve(sheet.taskId))?.let { task ->
             ThingsSheet(onDismiss = onDismiss) {
                 DeadlinePicker(task) { date ->
                     viewModel.updateTask(task.id, TaskPatch(deadline = Opt.of(date)))
@@ -542,7 +542,7 @@ private fun SheetHost(
             }
         }
 
-        is Sheet.Tags -> model.item(sheet.taskId)?.let { task ->
+        is Sheet.Tags -> model.item(viewModel.resolve(sheet.taskId))?.let { task ->
             ThingsSheet(onDismiss = onDismiss) {
                 TagPicker(
                     task = task,
@@ -560,7 +560,7 @@ private fun SheetHost(
 
         is Sheet.Move -> ThingsSheet(onDismiss = onDismiss) {
             MovePicker(model) { patch ->
-                viewModel.updateTask(sheet.taskId, patch)
+                viewModel.updateTask(viewModel.resolve(sheet.taskId), patch)
                 onDismiss()
             }
         }
@@ -580,24 +580,24 @@ private fun SheetHost(
         )
 
         is Sheet.ProjectMenu -> {
-            val project = model.projectsById[sheet.projectId]
+            val projectId = viewModel.resolve(sheet.projectId)
             ContextMenuSheet(
                 entries = listOfNotNull(
-                    MenuEntry.Action("Complete Project", { viewModel.completeTask(sheet.projectId, true) }),
+                    MenuEntry.Action("Complete Project", { viewModel.completeTask(projectId, true) }),
                     MenuEntry.Separator,
                     MenuEntry.Action("Anytime", {
-                        viewModel.updateTask(sheet.projectId, TaskPatch(whenValue = Opt.of("anytime")))
+                        viewModel.updateTask(projectId, TaskPatch(whenValue = Opt.of("anytime")))
                     }),
                     MenuEntry.Action("Someday", {
-                        viewModel.updateTask(sheet.projectId, TaskPatch(whenValue = Opt.of("someday")))
+                        viewModel.updateTask(projectId, TaskPatch(whenValue = Opt.of("someday")))
                     }),
                     MenuEntry.Separator,
-                    MenuEntry.Action("New Heading", { viewModel.createHeading("New Heading", sheet.projectId) }),
+                    MenuEntry.Action("New Heading", { viewModel.createHeading("New Heading", projectId) }),
                     MenuEntry.Separator,
                     MenuEntry.Action(
                         label = "Delete Project",
                         onSelect = {
-                            viewModel.trashTask(sheet.projectId)
+                            viewModel.trashTask(projectId)
                             navController.popBackStack()
                         },
                         danger = true,
@@ -610,7 +610,7 @@ private fun SheetHost(
         is Sheet.AreaMenu -> ContextMenuSheet(
             entries = listOf(
                 MenuEntry.Action("New Project", {
-                    viewModel.createProject("", areaId = sheet.areaId) { id ->
+                    viewModel.createProject("", areaId = viewModel.resolve(sheet.areaId)) { id ->
                         navController.navigate(Route.Project(id, isNew = true))
                     }
                 }),
@@ -618,7 +618,7 @@ private fun SheetHost(
                 MenuEntry.Action(
                     label = "Delete Area",
                     onSelect = {
-                        viewModel.deleteArea(sheet.areaId)
+                        viewModel.deleteArea(viewModel.resolve(sheet.areaId))
                         navController.popBackStack()
                     },
                     danger = true,
